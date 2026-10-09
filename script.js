@@ -136,11 +136,13 @@ function updateFavoriteButtons() {
 }
 
 function performMediaTap(target) {
-  const card = target.closest("[data-track-card], [data-video-card]");
+  const card = target.matches("[data-track-card], [data-video-card]")
+    ? target
+    : target.closest("[data-track-card], [data-video-card]");
   if (!card) return;
 
-  if (target.matches(".track-cover")) {
-    const image = target.querySelector("img");
+  if (card.matches("[data-track-card]")) {
+    const image = card.querySelector(".track-cover img");
     openImage(image?.currentSrc || image?.src, card.dataset.title || image?.alt || "", image?.alt);
   } else {
     openTrailer(card.dataset.video, card.dataset.title || "Movie trailer");
@@ -238,8 +240,20 @@ function formatTime(seconds) {
 
 function updatePlayingTrack() {
   const isPlaying = Boolean(selectedTrack && !audioPlayer.paused);
+  const audioControls = document.querySelector(".audio-player");
+  const hasSelectedTrack = Boolean(selectedTrack);
+  if (audioControls) {
+    const controlsHost = selectedTrack || document.querySelector(".playlist-section");
+    if (controlsHost && audioControls.parentElement !== controlsHost) {
+      controlsHost.append(audioControls);
+    }
+    audioControls.classList.toggle("is-visible", hasSelectedTrack);
+    audioControls.setAttribute("aria-hidden", String(!hasSelectedTrack));
+  }
+
   document.querySelectorAll("[data-track-card]").forEach((card) => {
     const isActive = card === selectedTrack && isPlaying;
+    card.classList.toggle("is-selected", card === selectedTrack);
     card.classList.toggle("is-playing", isActive);
     const button = card.querySelector("[data-play-track]");
     if (button) {
@@ -388,14 +402,13 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
-  const mediaTapTarget = target.closest(".track-cover, .movie-poster");
-  if (mediaTapTarget) {
+  const mediaCardTarget = target.closest("[data-track-card], [data-video-card]");
+  if (mediaCardTarget && !target.closest("[data-play-track], .audio-player")) {
     event.preventDefault();
-    if (pendingMediaTap?.target === mediaTapTarget) {
+    if (pendingMediaTap?.target === mediaCardTarget) {
       window.clearTimeout(pendingMediaTap.timeout);
       pendingMediaTap = null;
-      const card = mediaTapTarget.closest("[data-track-card], [data-video-card]");
-      if (card) toggleCardFavorite(card, card.matches("[data-track-card]") ? "track" : "movie");
+      toggleCardFavorite(mediaCardTarget, mediaCardTarget.matches("[data-track-card]") ? "track" : "movie");
       return;
     }
 
@@ -404,10 +417,10 @@ document.addEventListener("click", (event) => {
       performMediaTap(pendingMediaTap.target);
     }
     const timeout = window.setTimeout(() => {
-      performMediaTap(mediaTapTarget);
+      performMediaTap(mediaCardTarget);
       pendingMediaTap = null;
     }, 320);
-    pendingMediaTap = { target: mediaTapTarget, timeout };
+    pendingMediaTap = { target: mediaCardTarget, timeout };
     return;
   }
 
