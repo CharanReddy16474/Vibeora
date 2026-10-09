@@ -49,7 +49,7 @@ function renderVibeBoard() {
     vibeBoard.innerHTML = `
       <div class="vibe-empty">
         <strong>Nothing saved yet.</strong>
-        <span>Tap the heart on any track or trailer to build your personal mood board.</span>
+        <span>Double-tap a track cover or trailer poster to save it. A red heart will pop up.</span>
       </div>
     `;
     return;
@@ -91,8 +91,11 @@ function toggleFavoriteItem(button) {
   const image = button.dataset.favoriteImage || "";
   const meta = button.dataset.favoriteMeta || "CURATED PICK";
 
+  toggleFavorite(buildFavoriteItem(type, { title, subtitle, image, meta, id }));
+}
+
+function toggleFavorite(item) {
   const favorites = getFavoriteItems();
-  const item = buildFavoriteItem(type, { title, subtitle, image, meta, id });
   const index = favorites.findIndex((entry) => `${entry.type}:${entry.id}` === `${item.type}:${item.id}`);
 
   if (index >= 0) {
@@ -106,6 +109,23 @@ function toggleFavoriteItem(button) {
   renderVibeBoard();
 }
 
+function toggleCardFavorite(card, type) {
+  const title = card.dataset.title || card.querySelector("h3")?.textContent || "Favorite pick";
+  const subtitle = card.dataset.artist || card.dataset.album || card.querySelector("p")?.textContent || "Curated vibe";
+  const meta = card.dataset.album || card.querySelector(".movie-meta > span")?.textContent || "CURATED PICK";
+  const image = card.querySelector("img")?.currentSrc || card.querySelector("img")?.src || "";
+  const id = type === "track" ? card.dataset.title : card.dataset.video || card.dataset.title;
+  toggleFavorite(buildFavoriteItem(type, { title, subtitle, image, meta, id }));
+
+  card.querySelector(".favorite-pop")?.remove();
+  const heart = document.createElement("span");
+  heart.className = "favorite-pop";
+  heart.setAttribute("aria-hidden", "true");
+  heart.textContent = "♥";
+  card.append(heart);
+  heart.addEventListener("animationend", () => heart.remove(), { once: true });
+}
+
 function updateFavoriteButtons() {
   document.querySelectorAll("[data-favorite-toggle]").forEach((button) => {
     const isFavorite = isFavoriteSaved(button.dataset.favoriteType, button.dataset.favoriteId);
@@ -115,32 +135,16 @@ function updateFavoriteButtons() {
   });
 }
 
-function attachFavoriteButton(card, type) {
-  if (card.querySelector(".favorite-button")) return;
+function performMediaTap(target) {
+  const card = target.closest("[data-track-card], [data-video-card]");
+  if (!card) return;
 
-  const title = card.dataset.title || card.querySelector("h3")?.textContent || "Favorite pick";
-  const subtitle = card.dataset.artist || card.dataset.album || card.querySelector("p")?.textContent || "Curated vibe";
-  const meta = card.dataset.album || card.querySelector(".movie-meta > span")?.textContent || "CURATED PICK";
-  const image = card.querySelector("img")?.currentSrc || card.querySelector("img")?.src || "";
-  const favoriteButton = document.createElement("button");
-  favoriteButton.type = "button";
-  favoriteButton.className = "favorite-button";
-  favoriteButton.dataset.favoriteToggle = "true";
-  favoriteButton.dataset.favoriteType = type;
-  favoriteButton.dataset.favoriteId = String(type === "track" ? card.dataset.title : card.dataset.video || card.dataset.title);
-  favoriteButton.dataset.favoriteTitle = title;
-  favoriteButton.dataset.favoriteSubtitle = subtitle;
-  favoriteButton.dataset.favoriteImage = image;
-  favoriteButton.dataset.favoriteMeta = meta;
-  favoriteButton.textContent = "♡";
-  favoriteButton.setAttribute("aria-label", `Save ${title} to favorites`);
-  card.append(favoriteButton);
-  updateFavoriteButtons();
-}
-
-function attachFavoriteButtons() {
-  document.querySelectorAll("[data-track-card]").forEach((card) => attachFavoriteButton(card, "track"));
-  document.querySelectorAll("[data-video-card]").forEach((card) => attachFavoriteButton(card, "movie"));
+  if (target.matches(".track-cover")) {
+    const image = target.querySelector("img");
+    openImage(image?.currentSrc || image?.src, card.dataset.title || image?.alt || "", image?.alt);
+  } else {
+    openTrailer(card.dataset.video, card.dataset.title || "Movie trailer");
+  }
 }
 
 if (menuButton && navigation) {
@@ -378,9 +382,40 @@ function skipTrack(offset) {
   void toggleTrack(tracks[nextIndex]);
 }
 
+let pendingMediaTap = null;
+
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  const mediaTapTarget = target.closest(".track-cover, .movie-poster");
+  if (mediaTapTarget) {
+    event.preventDefault();
+    if (pendingMediaTap?.target === mediaTapTarget) {
+      window.clearTimeout(pendingMediaTap.timeout);
+      pendingMediaTap = null;
+      const card = mediaTapTarget.closest("[data-track-card], [data-video-card]");
+      if (card) toggleCardFavorite(card, card.matches("[data-track-card]") ? "track" : "movie");
+      return;
+    }
+
+    if (pendingMediaTap) {
+      window.clearTimeout(pendingMediaTap.timeout);
+      performMediaTap(pendingMediaTap.target);
+    }
+    const timeout = window.setTimeout(() => {
+      performMediaTap(mediaTapTarget);
+      pendingMediaTap = null;
+    }, 320);
+    pendingMediaTap = { target: mediaTapTarget, timeout };
+    return;
+  }
+
+  if (pendingMediaTap) {
+    window.clearTimeout(pendingMediaTap.timeout);
+    performMediaTap(pendingMediaTap.target);
+    pendingMediaTap = null;
+  }
 
   const favoriteButton = target.closest("[data-favorite-toggle]");
   if (favoriteButton) {
@@ -466,7 +501,8 @@ document.addEventListener("click", (event) => {
 
   const movieCard = target.closest("[data-video-card]");
   if (movieCard) {
-    openTrailer(movieCard.dataset.video, movieCard.dataset.title || "Telugu movie trailer");
+    const card = movieCard.closest("[data-video-card]");
+    if (card) openTrailer(card.dataset.video, card.dataset.title || "Telugu movie trailer");
     return;
   }
 
@@ -509,7 +545,6 @@ if (volumeInput) {
   audioPlayer.addEventListener(eventName, updatePlayingTrack);
 });
 
-attachFavoriteButtons();
 renderVibeBoard();
 updateFavoriteButtons();
 updatePlayingTrack();
