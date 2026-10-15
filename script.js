@@ -142,8 +142,7 @@ function performMediaTap(target) {
   if (!card) return;
 
   if (card.matches("[data-track-card]")) {
-    const image = card.querySelector(".track-cover img");
-    openImage(image?.currentSrc || image?.src, card.dataset.title || image?.alt || "", image?.alt);
+    void toggleTrack(card);
   } else {
     openTrailer(card.dataset.video, card.dataset.title || "Movie trailer");
   }
@@ -519,7 +518,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const imageTrigger = target.closest("[data-lightbox], .image-trigger, [data-track-card]");
+  const imageTrigger = target.closest("[data-lightbox], .image-trigger");
   if (imageTrigger) {
     const image = imageTrigger.querySelector("img");
     const src = imageTrigger.dataset.lightbox || image?.currentSrc || image?.src;
